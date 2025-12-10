@@ -209,7 +209,16 @@ async function run() {
             const order = req.body;
 
             order.createdAt = new Date();
-            order.status = "pending";
+
+            // status পাঠানো থাকলে সেটাই থাকবে, নাহলে default = "pending"
+            if (!order.status) {
+                order.status = "pending";
+            }
+
+            // paymentStatus না থাকলে default set করে দিতে পারো
+            if (!order.paymentStatus) {
+                order.paymentStatus = "unpaid";
+            }
 
             const result = await orderCollection.insertOne(order);
             res.send(result);
