@@ -12,10 +12,10 @@ const port = process.env.PORT || 8000;
 // middleware
 app.use(cors({
     origin: [
-        'http://localhost:5173', // আপনার ফ্রন্টএন্ড পোর্ট
-        'http://localhost:5178'
+        'http://localhost:5178',
+        'http://localhost:5173'
     ],
-    credentials: true // ⚠️ এটা না থাকলে কুকি যাবে না
+    credentials: true
 }));
 
 app.use(express.json());
@@ -23,7 +23,6 @@ app.use(cookieParser());
 
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASSWORD}@cluster0.bcaijik.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 
-// Create a MongoClient with a MongoClientOptions object to set the Stable API version
 const client = new MongoClient(uri, {
     serverApi: {
         version: ServerApiVersion.v1,
@@ -32,13 +31,13 @@ const client = new MongoClient(uri, {
     }
 });
 
-// ⭐ Custom Middleware for JWT Verification
+// MiddleWare
 const verifyToken = (req, res, next) => {
     const token = req.cookies?.token;
     if (!token) {
         return res.status(401).send({ message: 'Unauthorized access' });
     }
-    jwt.verify(token, process.env.ACCESS_TOKEN_SECRET || 'secret123', (err, decoded) => {
+    jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
         if (err) {
             return res.status(401).send({ message: 'Unauthorized access' });
         }
@@ -56,29 +55,23 @@ async function run() {
         const productCollection = db.collection('products');
         const orderCollection = db.collection('orders');
 
-        // ⭐ Auth Related APIs (JWT)
-        // index.js এর app.post('/jwt') অংশটি এভাবে লিখুন:
-
         // Auth Related API
         app.post('/jwt', async (req, res) => {
             const user = req.body;
-            const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET || 'secret123', { expiresIn: '1h' });
-
+            const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '1h' });
             res.cookie('token', token, {
                 httpOnly: true,
-                secure: false, // ⚠️ localhost এ অবশ্যই false হতে হবে
-                sameSite: 'strict', // ⚠️ আগেরবার ভুল ছিল, এটা 'strict' দিন
-            })
-                .send({ success: true });
+                secure: false, // Localhost
+                sameSite: 'lax'
+            }).send({ success: true });
         });
 
         app.post('/logout', async (req, res) => {
             res.clearCookie('token', {
                 maxAge: 0,
-                secure: process.env.NODE_ENV === 'production',
-                sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
-            })
-                .send({ success: true });
+                secure: false,
+                sameSite: 'lax',
+            }).send({ success: true });
         });
 
         // ================= USER APIs =================
@@ -91,23 +84,20 @@ async function run() {
             user.createdAt = new Date();
             const result = await userCollection.insertOne(user)
             res.send(result);
-        });
+        })
 
-        // ⭐ VerifyToken added here (Private)
-        app.get('/users', verifyToken, async (req, res) => {
+        // ⭐ এই রাউটটা এখন Public (verifyToken নেই) - ড্যাশবোর্ড ঠিক করার জন্য
+        app.get('/users', async (req, res) => {
             const email = req.query.email;
-            if (req.user.email !== email) {
-                return res.status(403).send({ message: 'Forbidden access' });
-            }
             const user = await userCollection.findOne({ email })
             res.send(user || {})
-        });
+        })
 
-        // ⭐ VerifyToken added (Admin Only route ideally)
+        // ⭐ Admin Only - VerifyToken আছে
         app.get('/users/all', verifyToken, async (req, res) => {
             const user = await userCollection.find().sort({ createdAt: -1 }).toArray();
             res.send(user)
-        });
+        })
 
         app.patch('/users/:id', verifyToken, async (req, res) => {
             const id = req.params.id;
@@ -121,46 +111,33 @@ async function run() {
                 { $set: updateDoc }
             )
             res.send(result)
-        });
+        })
 
-        // ================= PRODUCT APIs =================
-        // Public (Home & All Products page requires no login usually, or you can protect)
+        
         app.get('/products', async (req, res) => {
-            const { search, category, page = 1, limit = 9 } = req.query; // ⭐ Pagination Logic Added
+            const { search, category, page = 1, limit = 9 } = req.query;
             const query = {};
+            if (search) query.name = { $regex: search, $options: 'i' };
+            if (category && category !== 'all') query.category = category;
 
-            if (search) {
-                query.name = { $regex: search, $options: 'i' };
-            }
-            if (category && category !== 'all') {
-                query.category = category;
-            }
-
-            // Pagination calculation
+            // Pagination setup
             const pageNumber = parseInt(page);
             const limitNumber = parseInt(limit);
             const skip = (pageNumber - 1) * limitNumber;
 
-            const products = await productCollection
-                .find(query)
+            const products = await productCollection.find(query)
                 .sort({ createdAt: -1 })
                 .skip(skip)
                 .limit(limitNumber)
                 .toArray();
 
-            // Count for pagination
             const total = await productCollection.countDocuments(query);
-
             res.send({ products, total });
         });
 
         app.get('/products/home', async (req, res) => {
             const limit = parseInt(req.query.limit) || 6;
-            const products = await productCollection
-                .find({ showOnHome: true })
-                .sort({ createdAt: -1 })
-                .limit(limit)
-                .toArray();
+            const products = await productCollection.find({ showOnHome: true }).sort({ createdAt: -1 }).limit(limit).toArray();
             res.send(products);
         });
 
@@ -170,11 +147,11 @@ async function run() {
                 const product = await productCollection.findOne({ _id: new ObjectId(id) });
                 res.send(product);
             } catch (err) {
-                res.status(400).send({ message: 'Invalid id' });
+                res.status(400).send({ message: 'Invalid product id' });
             }
         });
 
-        // Private Product APIs (Manager/Admin)
+        // Private Routes
         app.post('/products', verifyToken, async (req, res) => {
             const product = req.body;
             product.createdAt = new Date();
@@ -187,12 +164,12 @@ async function run() {
             const id = req.params.id
             const result = await productCollection.deleteOne({ _id: new ObjectId(id) })
             res.send(result)
-        });
+        })
 
         app.patch('/products/:id', verifyToken, async (req, res) => {
             const id = req.params.id;
             const updateData = req.body;
-            delete updateData._id; // prevent id update
+            delete updateData._id;
             const result = await productCollection.updateOne(
                 { _id: new ObjectId(id) },
                 { $set: updateData }
@@ -212,27 +189,18 @@ async function run() {
 
         app.get('/orders', verifyToken, async (req, res) => {
             const email = req.query.email;
-            if (req.user.email !== email) {
-                return res.status(403).send({ message: 'Forbidden access' });
-            }
-            const orders = await orderCollection
-                .find({ buyerEmail: email })
-                .sort({ createdAt: -1 })
-                .toArray();
+            if (req.user.email !== email) return res.status(403).send({ message: 'Forbidden access' });
+            const orders = await orderCollection.find({ buyerEmail: email }).sort({ createdAt: -1 }).toArray();
             res.send(orders);
         });
 
-        // Manager APIs
         app.get('/orders/all', verifyToken, async (req, res) => {
             const orders = await orderCollection.find().sort({ createdAt: -1 }).toArray();
             res.send(orders);
         });
 
         app.get('/orders/approved', verifyToken, async (req, res) => {
-            const orders = await orderCollection
-                .find({ status: "approved" })
-                .sort({ createdAt: -1 })
-                .toArray();
+            const orders = await orderCollection.find({ status: "approved" }).sort({ createdAt: -1 }).toArray();
             res.send(orders);
         });
 
@@ -248,11 +216,7 @@ async function run() {
             const updateDoc = { status };
             if (status === "approved") updateDoc.approvedAt = new Date();
             else updateDoc.approvedAt = null;
-
-            const result = await orderCollection.updateOne(
-                { _id: new ObjectId(id) },
-                { $set: updateDoc }
-            );
+            const result = await orderCollection.updateOne({ _id: new ObjectId(id) }, { $set: updateDoc });
             res.send(result);
         });
 
@@ -267,7 +231,7 @@ async function run() {
             res.send(result);
         });
 
-        // ================= PAYMENT APIs =================
+        // Stripe
         app.post('/create-payment-intent', verifyToken, async (req, res) => {
             const { amount, currency = "usd" } = req.body;
             if (!amount) return res.status(400).send({ message: "Invalid amount" });
