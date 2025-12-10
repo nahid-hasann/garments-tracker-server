@@ -11,9 +11,13 @@ const port = process.env.PORT || 8000;
 
 // middleware
 app.use(cors({
-    origin: ['http://localhost:5173', 'http://localhost:5178'], // আপনার ক্লায়েন্ট সাইডের পোর্ট
-    credentials: true
+    origin: [
+        'http://localhost:5173', // আপনার ফ্রন্টএন্ড পোর্ট
+        'http://localhost:5178'
+    ],
+    credentials: true // ⚠️ এটা না থাকলে কুকি যাবে না
 }));
+
 app.use(express.json());
 app.use(cookieParser());
 
@@ -53,15 +57,17 @@ async function run() {
         const orderCollection = db.collection('orders');
 
         // ⭐ Auth Related APIs (JWT)
+        // index.js এর app.post('/jwt') অংশটি এভাবে লিখুন:
+
+        // Auth Related API
         app.post('/jwt', async (req, res) => {
             const user = req.body;
-            // Token generate
             const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET || 'secret123', { expiresIn: '1h' });
 
             res.cookie('token', token, {
                 httpOnly: true,
-                secure: process.env.NODE_ENV === 'production',
-                sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
+                secure: false, // ⚠️ localhost এ অবশ্যই false হতে হবে
+                sameSite: 'strict', // ⚠️ আগেরবার ভুল ছিল, এটা 'strict' দিন
             })
                 .send({ success: true });
         });
