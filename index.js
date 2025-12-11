@@ -86,7 +86,7 @@ async function run() {
             res.send(result);
         })
 
-        
+
         app.get('/users', async (req, res) => {
             const email = req.query.email;
             const user = await userCollection.findOne({ email })
@@ -99,21 +99,34 @@ async function run() {
             res.send(user)
         })
 
+        // ✅ Updated User Patch API (Reason সহ)
         app.patch('/users/:id', verifyToken, async (req, res) => {
             const id = req.params.id;
-            const { role, status } = req.body;
+            // body থেকে suspendReason-ও নিচ্ছি
+            const { role, status, suspendReason } = req.body;
+
             const updateDoc = {};
+
             if (role) updateDoc.role = role;
             if (status) updateDoc.status = status;
+
+            // যদি সাসপেন্ড রিজন থাকে, সেটাও আপডেট করব
+            if (suspendReason) {
+                updateDoc.suspendReason = suspendReason;
+            }
+            // যদি ইউজারকে আবার Active করা হয়, তাহলে রিজন মুছে ফেলব
+            if (status === 'active') {
+                updateDoc.suspendReason = "";
+            }
 
             const result = await userCollection.updateOne(
                 { _id: new ObjectId(id) },
                 { $set: updateDoc }
             )
             res.send(result)
-        })
+        });
 
-        
+
         app.get('/products', async (req, res) => {
             const { search, category, page = 1, limit = 9 } = req.query;
             const query = {};
