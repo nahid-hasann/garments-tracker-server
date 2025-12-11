@@ -256,7 +256,41 @@ async function run() {
             res.send({ clientSecret: paymentIntent.client_secret });
         });
 
-        console.log("MongoDB Connected Successfully!");
+        // ⭐ Admin Analytics API
+        app.get('/admin-stats', verifyToken, async (req, res) => {
+            try {
+                // ১. সব কালেকশনের ডকুমেন্ট সংখ্যা বের করা
+                const users = await userCollection.estimatedDocumentCount();
+                const products = await productCollection.estimatedDocumentCount();
+                const orders = await orderCollection.estimatedDocumentCount();
+
+                // ২. মোট রেভিনিউ (Total Revenue) বের করা (Orders কালেকশনের orderPrice যোগ করে)
+                // যাদের পেমেন্ট স্ট্যাটাস 'paid' শুধু তাদের টাকা যোগ করছি (চাইলে সব যোগ করতে পারেন)
+                const payments = await orderCollection.aggregate([
+                    { $match: { paymentStatus: 'paid' } }, // শুধু পেইড অর্ডার
+                    {
+                        $group: {
+                            _id: null,
+                            totalRevenue: { $sum: '$orderPrice' } // orderPrice ফিল্ড যোগ হবে
+                        }
+                    }
+                ]).toArray();
+
+                const revenue = payments.length > 0 ? payments[0].totalRevenue : 0;
+
+                res.send({
+                    users,
+                    products,
+                    orders,
+                    revenue
+                });
+            } catch (err) {
+                console.error(err);
+                res.status(500).send({ message: "Failed to fetch stats" });
+            }
+        });
+
+        // console.log("MongoDB Connected Successfully!");
     } catch (err) {
         console.log("DB Error:", err)
     }
