@@ -14,7 +14,7 @@ app.use(cors({
     origin: [
         'http://localhost:5173',
         'http://localhost:5178',
-        'https://your-client-side-app.web.app', // ⚠️ ক্লায়েন্ট ডিপ্লয় করার পর আপডেট করবেন
+        'https://your-client-side-app.web.app', 
         'https://another-link.vercel.app'
     ],
     credentials: true
