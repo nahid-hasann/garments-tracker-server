@@ -12,11 +12,19 @@ const port = process.env.PORT || 8000;
 // middleware
 app.use(cors({
     origin: [
+        'http://localhost:5173',
         'http://localhost:5178',
-        'http://localhost:5173'
+        'https://your-client-side-app.web.app', // ⚠️ ক্লায়েন্ট ডিপ্লয় করার পর এই লিংকটা এখানে বসাবেন
+        'https://another-link.vercel.app'
     ],
     credentials: true
 }));
+
+const cookieOptions = {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
+};
 
 app.use(express.json());
 app.use(cookieParser());
@@ -59,12 +67,13 @@ async function run() {
         app.post('/jwt', async (req, res) => {
             const user = req.body;
             const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '1h' });
-            res.cookie('token', token, {
-                httpOnly: true,
-                secure: false, // Localhost
-                sameSite: 'lax'
-            }).send({ success: true });
+            res.cookie('token', token, cookieOptions).send({ success: true });
         });
+
+        app.post('/logout', async (req, res) => {
+            res.clearCookie('token', { ...cookieOptions, maxAge: 0 }).send({ success: true });
+        });
+    }
 
         app.post('/logout', async (req, res) => {
             res.clearCookie('token', {
