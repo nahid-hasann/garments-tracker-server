@@ -14,7 +14,7 @@ app.use(cors({
     origin: [
         'http://localhost:5173',
         'http://localhost:5178',
-        'https://your-client-side-app.web.app', // ⚠️ ক্লায়েন্ট ডিপ্লয় করার পর এই লিংকটা এখানে বসাবেন
+        'https://your-client-side-app.web.app', // ⚠️ ক্লায়েন্ট ডিপ্লয় করার পর আপডেট করবেন
         'https://another-link.vercel.app'
     ],
     credentials: true
@@ -73,15 +73,6 @@ async function run() {
         app.post('/logout', async (req, res) => {
             res.clearCookie('token', { ...cookieOptions, maxAge: 0 }).send({ success: true });
         });
-    }
-
-        app.post('/logout', async (req, res) => {
-            res.clearCookie('token', {
-                maxAge: 0,
-                secure: false,
-                sameSite: 'lax',
-            }).send({ success: true });
-        });
 
         // ================= USER APIs =================
         app.post('/users', async (req, res) => {
@@ -93,25 +84,22 @@ async function run() {
             user.createdAt = new Date();
             const result = await userCollection.insertOne(user)
             res.send(result);
-        })
-
+        });
 
         app.get('/users', async (req, res) => {
             const email = req.query.email;
             const user = await userCollection.findOne({ email })
             res.send(user || {})
-        })
+        });
 
         // ⭐ Admin Only - VerifyToken আছে
         app.get('/users/all', verifyToken, async (req, res) => {
             const user = await userCollection.find().sort({ createdAt: -1 }).toArray();
             res.send(user)
-        })
+        });
 
-       
         app.patch('/users/:id', verifyToken, async (req, res) => {
             const id = req.params.id;
-            // body থেকে suspendReason-ও নিচ্ছি
             const { role, status, suspendReason } = req.body;
 
             const updateDoc = {};
@@ -119,11 +107,11 @@ async function run() {
             if (role) updateDoc.role = role;
             if (status) updateDoc.status = status;
 
-            // যদি সাসপেন্ড রিজন থাকে, সেটাও আপডেট করব
+            // যদি সাসপেন্ড রিজন থাকে
             if (suspendReason) {
                 updateDoc.suspendReason = suspendReason;
             }
-            // যদি ইউজারকে আবার Active করা হয়, তাহলে রিজন মুছে ফেলব
+            // যদি ইউজারকে আবার Active করা হয়
             if (status === 'active') {
                 updateDoc.suspendReason = "";
             }
@@ -135,7 +123,7 @@ async function run() {
             res.send(result)
         });
 
-
+        // ================= PRODUCT APIs =================
         app.get('/products', async (req, res) => {
             const { search, category, page = 1, limit = 9 } = req.query;
             const query = {};
@@ -186,7 +174,7 @@ async function run() {
             const id = req.params.id
             const result = await productCollection.deleteOne({ _id: new ObjectId(id) })
             res.send(result)
-        })
+        });
 
         app.patch('/products/:id', verifyToken, async (req, res) => {
             const id = req.params.id;
@@ -268,19 +256,16 @@ async function run() {
         // ⭐ Admin Analytics API
         app.get('/admin-stats', verifyToken, async (req, res) => {
             try {
-                // ১. সব কালেকশনের ডকুমেন্ট সংখ্যা বের করা
                 const users = await userCollection.estimatedDocumentCount();
                 const products = await productCollection.estimatedDocumentCount();
                 const orders = await orderCollection.estimatedDocumentCount();
 
-                // ২. মোট রেভিনিউ (Total Revenue) বের করা (Orders কালেকশনের orderPrice যোগ করে)
-                // যাদের পেমেন্ট স্ট্যাটাস 'paid' শুধু তাদের টাকা যোগ করছি (চাইলে সব যোগ করতে পারেন)
                 const payments = await orderCollection.aggregate([
-                    { $match: { paymentStatus: 'paid' } }, // শুধু পেইড অর্ডার
+                    { $match: { paymentStatus: 'paid' } },
                     {
                         $group: {
                             _id: null,
-                            totalRevenue: { $sum: '$orderPrice' } // orderPrice ফিল্ড যোগ হবে
+                            totalRevenue: { $sum: '$orderPrice' }
                         }
                     }
                 ]).toArray();
@@ -299,7 +284,7 @@ async function run() {
             }
         });
 
-        // console.log("MongoDB Connected Successfully!");
+        console.log("MongoDB Connected Successfully!");
     } catch (err) {
         console.log("DB Error:", err)
     }
