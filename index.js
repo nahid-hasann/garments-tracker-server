@@ -9,52 +9,25 @@ const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const app = express();
 const port = process.env.PORT || 8000;
 
-// ==========================================================
-// 🔥 CRITICAL FIX: Manual CORS Handling for Vercel
-// ==========================================================
-app.use((req, res, next) => {
-    const allowedOrigins = [
-        'http://localhost:5173',
-        'http://localhost:5174', // যদি অন্য পোর্টে রান করে
-        'https://garments-tracker-6d930.web.app',
-        'https://garments-tracker-6d930.firebaseapp.com'
-    ];
-    const origin = req.headers.origin;
-
-    if (allowedOrigins.includes(origin)) {
-        res.setHeader('Access-Control-Allow-Origin', origin);
-    }
-
-    res.header('Access-Control-Allow-Methods', 'GET, OPTIONS, POST, PUT, PATCH, DELETE');
-    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
-    res.header('Access-Control-Allow-Credentials', 'true');
-
-    if (req.method === 'OPTIONS') {
-        return res.status(200).end();
-    }
-    next();
-});
-
-// লাইব্রেরিও থাকলো ব্যাকআপ হিসেবে
+// middleware
 app.use(cors({
     origin: [
         'http://localhost:5173',
-        'http://localhost:5174',
+        'http://localhost:5178',
         'https://garments-tracker-6d930.web.app',
         'https://garments-tracker-6d930.firebaseapp.com'
     ],
     credentials: true
 }));
 
-app.use(express.json());
-app.use(cookieParser());
-
-// ✅ Cookie Options for Live Site
 const cookieOptions = {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production" ? true : false,
+    secure: process.env.NODE_ENV === "production",
     sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
 };
+
+app.use(express.json());
+app.use(cookieParser());
 
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASSWORD}@cluster0.bcaijik.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 
@@ -66,7 +39,7 @@ const client = new MongoClient(uri, {
     }
 });
 
-// Middleware
+// MiddleWare
 const verifyToken = (req, res, next) => {
     const token = req.cookies?.token;
     if (!token) {
@@ -83,7 +56,7 @@ const verifyToken = (req, res, next) => {
 
 async function run() {
     try {
-        // await client.connect(); // Vercel এ এটা কমেন্ট করে রাখাই ভালো, সরাসরি কানেক্ট হবে
+        await client.connect();
 
         const db = client.db('garmentsDB');
         const userCollection = db.collection('user');
@@ -119,6 +92,7 @@ async function run() {
             res.send(user || {})
         });
 
+        // ⭐ Admin Only - VerifyToken আছে
         app.get('/users/all', verifyToken, async (req, res) => {
             const user = await userCollection.find().sort({ createdAt: -1 }).toArray();
             res.send(user)
@@ -127,11 +101,20 @@ async function run() {
         app.patch('/users/:id', verifyToken, async (req, res) => {
             const id = req.params.id;
             const { role, status, suspendReason } = req.body;
+
             const updateDoc = {};
+
             if (role) updateDoc.role = role;
             if (status) updateDoc.status = status;
-            if (suspendReason) updateDoc.suspendReason = suspendReason;
-            if (status === 'active') updateDoc.suspendReason = "";
+
+            // যদি সাসপেন্ড রিজন থাকে
+            if (suspendReason) {
+                updateDoc.suspendReason = suspendReason;
+            }
+            // যদি ইউজারকে আবার Active করা হয়
+            if (status === 'active') {
+                updateDoc.suspendReason = "";
+            }
 
             const result = await userCollection.updateOne(
                 { _id: new ObjectId(id) },
@@ -147,6 +130,7 @@ async function run() {
             if (search) query.name = { $regex: search, $options: 'i' };
             if (category && category !== 'all') query.category = category;
 
+            // Pagination setup
             const pageNumber = parseInt(page);
             const limitNumber = parseInt(limit);
             const skip = (pageNumber - 1) * limitNumber;
@@ -177,6 +161,7 @@ async function run() {
             }
         });
 
+        // Private Routes
         app.post('/products', verifyToken, async (req, res) => {
             const product = req.body;
             product.createdAt = new Date();
@@ -268,7 +253,7 @@ async function run() {
             res.send({ clientSecret: paymentIntent.client_secret });
         });
 
-        // Admin Analytics
+        // ⭐ Admin Analytics API
         app.get('/admin-stats', verifyToken, async (req, res) => {
             try {
                 const users = await userCollection.estimatedDocumentCount();
@@ -286,7 +271,13 @@ async function run() {
                 ]).toArray();
 
                 const revenue = payments.length > 0 ? payments[0].totalRevenue : 0;
-                res.send({ users, products, orders, revenue });
+
+                res.send({
+                    users,
+                    products,
+                    orders,
+                    revenue
+                });
             } catch (err) {
                 console.error(err);
                 res.status(500).send({ message: "Failed to fetch stats" });
