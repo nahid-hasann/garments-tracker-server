@@ -1,29 +1,32 @@
 {
     "version": 2,
-    "builds": [
+    "rewrites": [
         {
-            "src": "index.js",
-            "use": "@vercel/node"
+            "source": "/(.*)",
+            "destination": "/index.js"
         }
     ],
-    "routes": [
+    "headers": [
         {
-            "src": "/(.*)",
-            "dest": "index.js",
-            "methods": [
-                "GET",
-                "POST",
-                "PUT",
-                "PATCH",
-                "DELETE",
-                "OPTIONS"
-            ],
-            "headers": {
-                "Access-Control-Allow-Credentials": "true",
-                "Access-Control-Allow-Origin": "https://garments-tracker-6d930.web.app",
-                "Access-Control-Allow-Methods": "GET,OPTIONS,PATCH,DELETE,POST,PUT",
-                "Access-Control-Allow-Headers": "X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization"
-            }
+            "source": "/(.*)",
+            "headers": [
+                {
+                    "key": "Access-Control-Allow-Credentials",
+                    "value": "true"
+                },
+                {
+                    "key": "Access-Control-Allow-Origin",
+                    "value": "https://garments-tracker-6d930.web.app"
+                },
+                {
+                    "key": "Access-Control-Allow-Methods",
+                    "value": "GET,OPTIONS,PATCH,DELETE,POST,PUT"
+                },
+                {
+                    "key": "Access-Control-Allow-Headers",
+                    "value": "X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization"
+                }
+            ]
         }
     ]
 }
