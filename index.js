@@ -60,9 +60,7 @@ const client = new MongoClient(uri, {
     }
 });
 
-// ==========================================================
-// 🔥 GLOBAL COLLECTION DEFINITION (Run এর বাইরে)
-// ==========================================================
+
 const db = client.db('garmentsDB');
 const userCollection = db.collection('user');
 const productCollection = db.collection('products');
