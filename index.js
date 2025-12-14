@@ -9,9 +9,8 @@ const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const app = express();
 const port = process.env.PORT || 8000;
 
-// ==========================================================
-// 🔥 VERCEL CORS FIX (MANUAL HEADERS)
-// ==========================================================
+
+
 app.use((req, res, next) => {
     const allowedOrigins = [
         'http://localhost:5173',
