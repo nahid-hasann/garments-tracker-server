@@ -66,6 +66,20 @@ const userCollection = db.collection('user');
 const productCollection = db.collection('products');
 const orderCollection = db.collection('orders');
 
+app.use(async (req, res, next) => {
+    try {
+        // যদি কানেকশন না থাকে, নতুন করে কানেক্ট করো
+        if (!client.topology || !client.topology.isConnected()) {
+            await client.connect();
+            console.log("✅ Reconnected to MongoDB!");
+        }
+        next();
+    } catch (err) {
+        console.log("❌ DB Connection Error:", err);
+        res.status(500).send({ message: "Database connection failed" });
+    }
+});
+
 // Non-blocking DB Connection
 async function connectDB() {
     try {
