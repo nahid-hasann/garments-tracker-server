@@ -9,8 +9,6 @@ const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const app = express();
 const port = process.env.PORT || 8000;
 
-
-
 app.use((req, res, next) => {
     const allowedOrigins = [
         'http://localhost:5173',
@@ -60,7 +58,6 @@ const client = new MongoClient(uri, {
     }
 });
 
-
 const db = client.db('garmentsDB');
 const userCollection = db.collection('user');
 const productCollection = db.collection('products');
@@ -68,7 +65,6 @@ const orderCollection = db.collection('orders');
 
 app.use(async (req, res, next) => {
     try {
-        // যদি কানেকশন না থাকে, নতুন করে কানেক্ট করো
         if (!client.topology || !client.topology.isConnected()) {
             await client.connect();
             console.log("✅ Reconnected to MongoDB!");
@@ -80,7 +76,6 @@ app.use(async (req, res, next) => {
     }
 });
 
-// Non-blocking DB Connection
 async function connectDB() {
     try {
         if (!client.topology || !client.topology.isConnected()) {
@@ -93,7 +88,6 @@ async function connectDB() {
 }
 connectDB();
 
-// Middleware
 const verifyToken = (req, res, next) => {
     const token = req.cookies?.token;
     if (!token) {
@@ -108,15 +102,10 @@ const verifyToken = (req, res, next) => {
     });
 };
 
-// ==========================================================
-// 🚀 ALL ROUTES (GLOBAL SCOPE)
-// ==========================================================
-
 app.get('/', (req, res) => {
     res.send('Garments Tracker Server Running!')
 });
 
-// Auth Related API
 app.post('/jwt', async (req, res) => {
     const user = req.body;
     const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '1h' });
@@ -127,7 +116,6 @@ app.post('/logout', async (req, res) => {
     res.clearCookie('token', { ...cookieOptions, maxAge: 0 }).send({ success: true });
 });
 
-// ================= USER APIs =================
 app.post('/users', async (req, res) => {
     const user = req.body;
     const exist = await userCollection.findOne({ email: user.email })
@@ -150,8 +138,12 @@ app.get('/users/all', verifyToken, async (req, res) => {
 
 app.patch('/users/:id', verifyToken, async (req, res) => {
     const id = req.params.id;
-    const { role, status, suspendReason } = req.body;
+    const { name, photo, role, status, suspendReason } = req.body;
     const updateDoc = {};
+
+    if (name) updateDoc.name = name;
+    if (photo) updateDoc.photo = photo;
+
     if (role) updateDoc.role = role;
     if (status) updateDoc.status = status;
     if (suspendReason) updateDoc.suspendReason = suspendReason;
@@ -161,25 +153,56 @@ app.patch('/users/:id', verifyToken, async (req, res) => {
     res.send(result)
 });
 
-// ================= PRODUCT APIs =================
 app.get('/products', async (req, res) => {
-    const { search, category, page = 1, limit = 9 } = req.query;
-    const query = {};
-    if (search) query.name = { $regex: search, $options: 'i' };
-    if (category && category !== 'all') query.category = category;
+    try {
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 9;
+        const skip = (page - 1) * limit;
 
-    const pageNumber = parseInt(page);
-    const limitNumber = parseInt(limit);
-    const skip = (pageNumber - 1) * limitNumber;
+        const search = req.query.search || "";
+        const category = req.query.category || "";
+        const sort = req.query.sort || "";
+        const minPrice = req.query.minPrice;
+        const maxPrice = req.query.maxPrice;
 
-    const products = await productCollection.find(query)
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limitNumber)
-        .toArray();
+        let query = {
+            name: { $regex: search, $options: 'i' },
+        };
 
-    const total = await productCollection.countDocuments(query);
-    res.send({ products, total });
+        if (category && category !== 'all') {
+            query.category = category;
+        }
+
+        if (minPrice || maxPrice) {
+            query.price = {};
+            if (minPrice) query.price.$gte = parseFloat(minPrice);
+            if (maxPrice) query.price.$lte = parseFloat(maxPrice);
+        }
+
+        let sortOptions = {};
+        if (sort === 'asc') {
+            sortOptions = { price: 1 };
+        } else if (sort === 'desc') {
+            sortOptions = { price: -1 };
+        } else {
+            sortOptions = { createdAt: -1 };
+        }
+
+        const products = await productCollection
+            .find(query)
+            .sort(sortOptions)
+            .skip(skip)
+            .limit(limit)
+            .toArray();
+
+        const total = await productCollection.countDocuments(query);
+
+        res.send({ products, total });
+
+    } catch (err) {
+        console.error("Error fetching products:", err);
+        res.status(500).send({ message: "Failed to load products" });
+    }
 });
 
 app.get('/products/home', async (req, res) => {
@@ -201,6 +224,9 @@ app.get('/products/:id', async (req, res) => {
 app.post('/products', verifyToken, async (req, res) => {
     const product = req.body;
     product.createdAt = new Date();
+
+    if (product.price) product.price = parseFloat(product.price);
+
     if (product.showOnHome === undefined) product.showOnHome = false;
     const result = await productCollection.insertOne(product);
     res.send(result);
@@ -216,11 +242,13 @@ app.patch('/products/:id', verifyToken, async (req, res) => {
     const id = req.params.id;
     const updateData = req.body;
     delete updateData._id;
+
+    if (updateData.price) updateData.price = parseFloat(updateData.price);
+
     const result = await productCollection.updateOne({ _id: new ObjectId(id) }, { $set: updateData });
     res.send(result);
 });
 
-// ================= ORDER APIs =================
 app.post('/orders', verifyToken, async (req, res) => {
     const order = req.body;
     order.createdAt = new Date();
@@ -230,7 +258,6 @@ app.post('/orders', verifyToken, async (req, res) => {
     res.send(result);
 });
 
-// 1. Buyer's Orders
 app.get('/orders', verifyToken, async (req, res) => {
     const email = req.query.email;
     if (req.user.email !== email) return res.status(403).send({ message: 'Forbidden access' });
@@ -238,19 +265,16 @@ app.get('/orders', verifyToken, async (req, res) => {
     res.send(orders);
 });
 
-// 2. All Orders
 app.get('/orders/all', verifyToken, async (req, res) => {
     const orders = await orderCollection.find().sort({ createdAt: -1 }).toArray();
     res.send(orders);
 });
 
-// 3. Approved Orders (সিরিয়াল ঠিক রাখা হয়েছে)
 app.get('/orders/approved', verifyToken, async (req, res) => {
     const orders = await orderCollection.find({ status: "approved" }).sort({ createdAt: -1 }).toArray();
     res.send(orders);
 });
 
-// 4. Single Order by ID (এটা শেষে থাকতে হবে)
 app.get('/orders/:id', verifyToken, async (req, res) => {
     const id = req.params.id;
     const order = await orderCollection.findOne({ _id: new ObjectId(id) });
@@ -278,7 +302,6 @@ app.post('/orders/:id/production-updates', verifyToken, async (req, res) => {
     res.send(result);
 });
 
-// ================= STRIPE & STATS =================
 app.post('/create-payment-intent', verifyToken, async (req, res) => {
     const { amount, currency = "usd" } = req.body;
     if (!amount) return res.status(400).send({ message: "Invalid amount" });
